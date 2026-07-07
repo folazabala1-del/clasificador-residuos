@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
 from PIL import Image
 import io
+import numpy as np
 
 # ==========================
 # Crear aplicación FastAPI
@@ -12,8 +13,11 @@ app = FastAPI(title="Clasificador Inteligente de Residuos")
 # Permitir conexiones desde el frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Después podremos limitar esto
-    allow_credentials=True,
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500"
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -29,7 +33,7 @@ print("Modelo cargado correctamente.")
 
 # Preparar modelo para evitar demora en la primera inferencia
 model.predict(
-    source="https://ultralytics.com/images/bus.jpg",
+    source=np.zeros((320,320,3), dtype=np.uint8),
     imgsz=320,
     device="cpu",
     verbose=False

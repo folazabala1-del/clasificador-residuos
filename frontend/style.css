@@ -1,0 +1,65 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #f2f5f3;
+    text-align: center;
+}
+
+
+h1 {
+    margin-top: 20px;
+}
+
+
+.container {
+
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 30px;
+
+}
+
+
+.camera-container {
+
+    position: relative;
+    width: 640px;
+    height: 480px;
+
+}
+
+
+video {
+
+    width: 640px;
+    height: 480px;
+    border-radius: 10px;
+
+}
+
+
+canvas {
+
+    position: absolute;
+    top:0;
+    left:0;
+
+}
+
+
+.result {
+
+    background:white;
+    padding:20px;
+    width:250px;
+    border-radius:10px;
+
+}
+
+
+#prediction {
+
+    font-size:20px;
+    font-weight:bold;
+
+}
