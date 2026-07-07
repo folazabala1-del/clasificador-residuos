@@ -9,11 +9,8 @@ const API_PREDICT = `${API_BASE}/predict`;
 const API_HEALTH = `${API_BASE}/health`;
 
 // --------------------------------------------------------------------
-// "Calentamos" el servidor apenas carga la página. En el plan gratuito
-// de Render, el servicio se duerme tras ~15 min sin uso, y la primera
-// petición real puede tardar 30-60s en responder mientras despierta.
-// Con esto, ese costo se paga antes de que el usuario intente detectar
-// algo, en vez de que la primera detección se sienta "colgada".
+// "Calentamos" el servidor apenas carga la página, para que la primera
+// detección real no pague el costo de que Render despierte el servicio.
 // --------------------------------------------------------------------
 async function calentarServidor() {
     status.textContent = "Conectando con el servidor (puede tardar si estaba dormido)...";
@@ -63,16 +60,21 @@ video.addEventListener("loadedmetadata", () => {
 let processing = false;
 
 async function detect() {
-    // Evita mandar un fotograma nuevo si el anterior todavía no responde,
-    // y evita mandar fotogramas antes de que la cámara esté lista.
     if (processing || video.videoWidth === 0) return;
     processing = true;
 
+    // IMPORTANTE: capturamos el frame con el mismo ancho/alto de la
+    // webcam (ej. 640x480), SIN forzarlo a un cuadrado de 320x320.
+    // Deformar la imagen aquí (como antes) le da al modelo una forma
+    // distinta a la que vio durante el entrenamiento, y eso baja mucho
+    // la confianza de las detecciones. El backend se encarga de
+    // redimensionar correctamente (manteniendo la proporción) antes de
+    // pasarla al modelo.
     const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = 320;
-    tempCanvas.height = 320;
+    tempCanvas.width = video.videoWidth;
+    tempCanvas.height = video.videoHeight;
     const tempCtx = tempCanvas.getContext("2d");
-    tempCtx.drawImage(video, 0, 0, 320, 320);
+    tempCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
 
     tempCanvas.toBlob(async (blob) => {
         const formData = new FormData();
@@ -99,16 +101,14 @@ async function detect() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             if (data.detections && data.detections.length) {
-                const scaleX = video.videoWidth / 320;
-                const scaleY = video.videoHeight / 320;
-
                 result.innerHTML = "";
 
+                // Ya NO se reescala: el backend devuelve las coordenadas
+                // directamente en el tamaño del frame que se envió
+                // (video.videoWidth x video.videoHeight), porque ahí
+                // deshace el letterbox antes de responder.
                 data.detections.forEach(det => {
-                    const x1 = det.bbox[0] * scaleX;
-                    const y1 = det.bbox[1] * scaleY;
-                    const x2 = det.bbox[2] * scaleX;
-                    const y2 = det.bbox[3] * scaleY;
+                    const [x1, y1, x2, y2] = det.bbox;
 
                     ctx.strokeStyle = "lime";
                     ctx.lineWidth = 4;
@@ -128,9 +128,6 @@ async function detect() {
                 result.innerHTML = "Buscando residuo...";
             }
 
-            // Latencia real de esta detección — déjala visible mientras
-            // depuras el tema de velocidad; quítala si no la quieres en
-            // la demo final para el profesor.
             result.innerHTML += `<span class="latencia">Latencia: ${latenciaMs} ms</span>`;
 
         } catch (error) {
