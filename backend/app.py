@@ -1,16 +1,20 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from ultralytics import YOLO
 from PIL import Image
-import io
+import onnxruntime as ort
 import numpy as np
+import io
+
 
 # ==========================
 # Crear aplicación FastAPI
 # ==========================
 app = FastAPI(title="Clasificador Inteligente de Residuos")
 
-# Permitir conexiones desde el frontend
+
+# ==========================
+# Configuración CORS
+# ==========================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -22,24 +26,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # ==========================
-# Cargar modelo UNA sola vez
+# Cargar modelo ONNX
 # ==========================
-print("Cargando modelo...")
+print("Cargando modelo ONNX...")
 
-model = YOLO("best.pt")
-
-print("Modelo cargado correctamente.")
-
-# Preparar modelo para evitar demora en la primera inferencia
-model.predict(
-    source=np.zeros((320,320,3), dtype=np.uint8),
-    imgsz=320,
-    device="cpu",
-    verbose=False
+session = ort.InferenceSession(
+    "best.onnx",
+    providers=["CPUExecutionProvider"]
 )
 
-print("Modelo preparado.")
+input_name = session.get_inputs()[0].name
+
+print("Modelo ONNX cargado correctamente.")
+
+
+# Clases del modelo
+classes = {
+    0: "battery",
+    1: "biological",
+    2: "cardboard",
+    3: "clothes",
+    4: "glass",
+    5: "metal",
+    6: "paper",
+    7: "plastic",
+    8: "sanitary waste and toothbrushes",
+    9: "shoes"
+}
+
 
 # ==========================
 # Ruta principal
@@ -52,15 +68,35 @@ def inicio():
 
 
 # ==========================
-# Estado de la API
+# Health check
 # ==========================
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "modelo": "YOLO11n",
+        "modelo": "YOLO11n ONNX",
         "estado": "activo"
     }
+
+
+# ==========================
+# Preprocesamiento imagen
+# ==========================
+def preprocess(image):
+
+    image = image.resize((320,320))
+
+    image = np.array(image)
+
+    image = image[:, :, ::-1]  # RGB a BGR
+
+    image = image.transpose(2,0,1)
+
+    image = image.astype(np.float32) / 255.0
+
+    image = np.expand_dims(image, axis=0)
+
+    return image
 
 
 # ==========================
@@ -69,44 +105,70 @@ def health():
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
 
-    # Leer imagen enviada
     contenido = await file.read()
 
-    imagen = Image.open(io.BytesIO(contenido))
+    imagen = Image.open(
+        io.BytesIO(contenido)
+    ).convert("RGB")
 
-    # Reducir tamaño para Render
-    imagen.thumbnail((640,640))
+
+    # Preparar tensor
+    tensor = preprocess(imagen)
 
 
-    # Ejecutar YOLO
-    results = model.predict(
-    imagen,
-    imgsz=320,
-    device="cpu",
-    verbose=False
-)
+    # Ejecutar ONNX
+    outputs = session.run(
+        None,
+        {
+            input_name: tensor
+        }
+    )
+
+
     detecciones = []
 
-    for result in results:
 
-        for box in result.boxes:
+    # Salida YOLO11:
+    # (1,14,2100)
+    predictions = outputs[0][0]
 
-            clase = result.names[int(box.cls)]
 
-            confianza = float(box.conf)
+    predictions = predictions.transpose()
 
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+    for pred in predictions:
+
+        x, y, w, h = pred[:4]
+
+        scores = pred[4:]
+
+        class_id = np.argmax(scores)
+
+        confidence = scores[class_id]
+
+
+        if confidence > 0.5:
 
             detecciones.append({
-                "class": clase,
-                "confidence": round(confianza, 3),
-                "bbox": [
-                    round(x1, 1),
-                    round(y1, 1),
-                    round(x2, 1),
-                    round(y2, 1)
+
+                "class": classes.get(
+                    int(class_id),
+                    "unknown"
+                ),
+
+                "confidence": round(
+                    float(confidence),
+                    3
+                ),
+
+                "bbox":[
+                    round(float(x),1),
+                    round(float(y),1),
+                    round(float(w),1),
+                    round(float(h),1)
                 ]
             })
+
 
     return {
         "detections": detecciones
