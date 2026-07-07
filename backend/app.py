@@ -27,6 +27,16 @@ model = YOLO("best.pt")
 
 print("Modelo cargado correctamente.")
 
+# Preparar modelo para evitar demora en la primera inferencia
+model.predict(
+    source="https://ultralytics.com/images/bus.jpg",
+    imgsz=320,
+    device="cpu",
+    verbose=False
+)
+
+print("Modelo preparado.")
+
 # ==========================
 # Ruta principal
 # ==========================
@@ -60,9 +70,17 @@ async def predict(file: UploadFile = File(...)):
 
     imagen = Image.open(io.BytesIO(contenido))
 
-    # Ejecutar YOLO
-    results = model.predict(imagen)
+    # Reducir tamaño para Render
+    imagen.thumbnail((640,640))
 
+
+    # Ejecutar YOLO
+    results = model.predict(
+    imagen,
+    imgsz=320,
+    device="cpu",
+    verbose=False
+)
     detecciones = []
 
     for result in results:
