@@ -283,7 +283,7 @@ async def predict(
         confidence = class_scores[class_id]
 
 
-        if confidence > 0.5:
+        if confidence > 0.15:   # antes: 0.5, solo para probar
 
 
             # Convertir cx cy wh a x1 y1 x2 y2
